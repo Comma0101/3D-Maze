@@ -1,0 +1,11 @@
+{
+  "name": "maze-game-server",
+  "version": "0.0.1",
+  "type": "module",
+  "dependencies": {
+    "express": "^5.1.0",
+    "cors": "^2.8.5",
+    "colyseus": "^0.14.24",
+    "@colyseus/schema": "^1.0.46"
+  }
+}
