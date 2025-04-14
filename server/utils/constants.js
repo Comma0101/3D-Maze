@@ -20,6 +20,20 @@ export const MAZE_CONFIG = {
   TOTAL_MAZES: 5,
 };
 
+// Cell types (should match client-side)
+export const CELL_TYPES = {
+  WALL: 1,
+  PATH: 0,
+  START: 3,
+  FINISH: 2,
+  SPIKE_WALL_TRAP: 4,
+  BLADE_TRAP: 5, // Added for the rotating blade trap
+  CRUSHER_TRAP: 6, // Added for the vertical crusher trap
+  TELEPORTER: 7, // Added for teleporter pads
+  CHECKPOINT: 8, // Added for checkpoints
+  MIRROR: 9, // Added for observation puzzle mirrors
+};
+
 // Player configuration
 export const PLAYER_CONFIG = {
   DEFAULT_POSITION: {

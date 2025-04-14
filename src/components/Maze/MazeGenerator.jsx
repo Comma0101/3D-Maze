@@ -1,6 +1,7 @@
 // src/components/Maze/MazeGenerator.jsx
 import { CELL_TYPES } from "../../utils/constants";
 import { seededRandom } from "../../utils/helpers";
+import { Queue } from "@datastructures-js/queue"; // Using a library for Queue
 
 // Collection of 5 different maze layouts with increased complexity
 const MAZE_LAYOUTS = [
@@ -210,6 +211,195 @@ function generateRandomMaze(
   // Ensure there's a path to the finish
   ensurePathToFinish(maze, finishX, finishY);
 
+  // --- Find Solution Path using BFS ---
+  // Note: We find the path *before* placing traps/teleporters/checkpoints
+  // to get the 'ideal' path. Placement logic below will avoid critical path cells if needed.
+  const startPos = { x: startX, y: startY };
+  const finishPos = { x: finishX, y: finishY };
+  const solutionPath = findSolutionPath(maze, startPos, finishPos);
+  console.log("Solution path length:", solutionPath?.length);
+
+  // --- Add Spike Wall Traps ---
+  const trapProbability = 0.05; // 5% chance for a suitable spot to become a trap
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      // Check only path cells, not start/finish yet
+      if (maze[y][x] === CELL_TYPES.PATH) {
+        // Check for horizontal corridor: Wall above, Wall below, Path left, Path right
+        if (
+          maze[y - 1][x] === CELL_TYPES.WALL &&
+          maze[y + 1][x] === CELL_TYPES.WALL &&
+          maze[y][x - 1] === CELL_TYPES.PATH &&
+          maze[y][x + 1] === CELL_TYPES.PATH &&
+          random() < trapProbability
+        ) {
+          // Ensure it's not too close to start
+          if (Math.abs(x - startX) > 2 || Math.abs(y - startY) > 2) {
+            maze[y][x] = CELL_TYPES.SPIKE_WALL_TRAP;
+          }
+        }
+        // Check for vertical corridor: Wall left, Wall right, Path above, Path below
+        else if (
+          maze[y][x - 1] === CELL_TYPES.WALL &&
+          maze[y][x + 1] === CELL_TYPES.WALL &&
+          maze[y - 1][x] === CELL_TYPES.PATH &&
+          maze[y + 1][x] === CELL_TYPES.PATH &&
+          random() < trapProbability
+        ) {
+          // Ensure it's not too close to start
+          if (Math.abs(x - startX) > 2 || Math.abs(y - startY) > 2) {
+            maze[y][x] = CELL_TYPES.SPIKE_WALL_TRAP;
+          }
+        }
+      }
+    }
+  }
+  // --- End Add Spike Wall Traps ---
+
+  // --- Add Blade Traps ---
+  const bladeTrapProbability = 0.03; // Lower probability for blade traps
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      // Check path cells that are NOT already spike traps
+      if (maze[y][x] === CELL_TYPES.PATH) {
+        // Place in slightly more open areas (e.g., 2x2 path squares or intersections)
+        let pathNeighbors = 0;
+        if (maze[y - 1][x] === CELL_TYPES.PATH) pathNeighbors++;
+        if (maze[y + 1][x] === CELL_TYPES.PATH) pathNeighbors++;
+        if (maze[y][x - 1] === CELL_TYPES.PATH) pathNeighbors++;
+        if (maze[y][x + 1] === CELL_TYPES.PATH) pathNeighbors++;
+
+        // Place if it's an intersection or part of a wider path (>= 2 path neighbors)
+        if (pathNeighbors >= 2 && random() < bladeTrapProbability) {
+          // Ensure it's not too close to start or finish
+          if (
+            (Math.abs(x - startX) > 3 || Math.abs(y - startY) > 3) &&
+            (Math.abs(x - finishX) > 3 || Math.abs(y - finishY) > 3)
+          ) {
+            maze[y][x] = CELL_TYPES.BLADE_TRAP;
+          }
+        }
+      }
+    }
+  }
+  // --- End Add Blade Traps ---
+
+  // --- Add Crusher Traps ---
+  const crusherTrapProbability = 0.02; // Even lower probability
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      // Check path cells not already occupied by other traps
+      if (maze[y][x] === CELL_TYPES.PATH && random() < crusherTrapProbability) {
+        // Ensure it's not too close to start or finish
+        if (
+          (Math.abs(x - startX) > 4 || Math.abs(y - startY) > 4) && // Further away
+          (Math.abs(x - finishX) > 4 || Math.abs(y - finishY) > 4)
+        ) {
+          // Check if it's a simple path (not intersection) for placement
+          let wallNeighbors = 0;
+          if (maze[y - 1][x] === CELL_TYPES.WALL) wallNeighbors++;
+          if (maze[y + 1][x] === CELL_TYPES.WALL) wallNeighbors++;
+          if (maze[y][x - 1] === CELL_TYPES.WALL) wallNeighbors++;
+          if (maze[y][x + 1] === CELL_TYPES.WALL) wallNeighbors++;
+          // Place in corridors (exactly 2 wall neighbors)
+          if (wallNeighbors === 2) {
+            maze[y][x] = CELL_TYPES.CRUSHER_TRAP;
+          }
+        }
+      }
+    }
+  }
+  // --- End Add Crusher Traps ---
+
+  // --- Add Teleporter Pairs ---
+  const potentialTeleporterLocations = [];
+  const teleporterPairs = [];
+  const maxTeleporterPairs = 2; // Create 2 pairs (4 teleporters total)
+
+  // Find dead ends (path cells with exactly one path neighbor)
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      if (maze[y][x] === CELL_TYPES.PATH) {
+        let pathNeighbors = 0;
+        if (maze[y - 1][x] === CELL_TYPES.PATH) pathNeighbors++;
+        if (maze[y + 1][x] === CELL_TYPES.PATH) pathNeighbors++;
+        if (maze[y][x - 1] === CELL_TYPES.PATH) pathNeighbors++;
+        if (maze[y][x + 1] === CELL_TYPES.PATH) pathNeighbors++;
+
+        if (pathNeighbors === 1) {
+          // Ensure it's not too close to start or finish
+          if (
+            (Math.abs(x - startX) > 5 || Math.abs(y - startY) > 5) &&
+            (Math.abs(x - finishX) > 5 || Math.abs(y - finishY) > 5)
+          ) {
+            potentialTeleporterLocations.push({ x, y });
+          }
+        }
+      }
+    }
+  }
+
+  // Shuffle potential locations
+  potentialTeleporterLocations.sort(() => random() - 0.5);
+
+  // Create pairs
+  for (
+    let i = 0;
+    i < potentialTeleporterLocations.length - 1 &&
+    teleporterPairs.length < maxTeleporterPairs;
+    i += 2
+  ) {
+    const entry = potentialTeleporterLocations[i];
+    const exit = potentialTeleporterLocations[i + 1];
+
+    // Place teleporters in the maze grid
+    maze[entry.y][entry.x] = CELL_TYPES.TELEPORTER;
+    maze[exit.y][exit.x] = CELL_TYPES.TELEPORTER;
+
+    // Store the pair (using grid coordinates)
+    teleporterPairs.push({ entry, exit });
+  }
+  console.log("Generated Teleporter Pairs:", teleporterPairs);
+  // --- End Add Teleporter Pairs ---
+
+  // --- Add Checkpoints along the solution path ---
+  const checkpoints = [];
+  const checkpointInterval = 15; // Place a checkpoint roughly every 15 steps
+  const minDistanceStartFinish = 5; // Don't place too close to start/finish
+
+  if (solutionPath) {
+    for (
+      let i = checkpointInterval;
+      i < solutionPath.length - minDistanceStartFinish;
+      i += checkpointInterval
+    ) {
+      const { x, y } = solutionPath[i];
+      // Ensure it's a standard path cell before placing checkpoint
+      // Avoid overwriting traps or teleporters
+      if (maze[y][x] === CELL_TYPES.PATH) {
+        // Double check proximity to actual start/finish cells
+        if (
+          Math.abs(x - startX) > minDistanceStartFinish ||
+          Math.abs(y - startY) > minDistanceStartFinish
+        ) {
+          if (
+            Math.abs(x - finishX) > minDistanceStartFinish ||
+            Math.abs(y - finishY) > minDistanceStartFinish
+          ) {
+            maze[y][x] = CELL_TYPES.CHECKPOINT;
+            checkpoints.push({ x, y });
+          }
+        }
+      }
+    }
+  }
+  console.log("Placed Checkpoints:", checkpoints);
+  // --- End Add Checkpoints ---
+
+  // --- Mirrors Removed for Performance ---
+  const mirrors = []; // Keep array empty
+  // --- End Mirrors Removed ---
+
   // NOW SET THE FINISH POSITION - after all maze generation is complete
   console.log("Setting finish position at:", finishX, finishY);
 
@@ -224,15 +414,26 @@ function generateRandomMaze(
       x <= Math.min(w - 2, finishX + 1);
       x++
     ) {
-      maze[y][x] = CELL_TYPES.PATH;
+      // Only overwrite walls, leave paths/checkpoints/teleporters etc.
+      if (maze[y][x] === CELL_TYPES.WALL) {
+        maze[y][x] = CELL_TYPES.PATH;
+      }
     }
   }
 
-  // Ensure there's a clear path from multiple directions
-  maze[finishY - 1][finishX] = CELL_TYPES.PATH; // Path above
-  maze[finishY][finishX - 1] = CELL_TYPES.PATH; // Path to the left
-  maze[finishY + 1][finishX] = CELL_TYPES.PATH; // Path below (if within bounds)
-  maze[finishY][finishX + 1] = CELL_TYPES.PATH; // Path to the right (if within bounds)
+  // Ensure there's a clear path from multiple directions, avoiding overwrites
+  const finishNeighbors = [
+    [finishY - 1, finishX],
+    [finishY, finishX - 1],
+    [finishY + 1, finishX],
+    [finishY, finishX + 1],
+  ];
+  for (const [ny, nx] of finishNeighbors) {
+    if (maze[ny]?.[nx] === CELL_TYPES.WALL) {
+      // Only carve if it's a wall
+      maze[ny][nx] = CELL_TYPES.PATH;
+    }
+  }
 
   // FINALLY set the finish position
   maze[finishY][finishX] = CELL_TYPES.FINISH;
@@ -249,6 +450,12 @@ function generateRandomMaze(
   let pathCount = 0;
   let startCount = 0;
   let finishCount = 0;
+  let spikeTrapCount = 0;
+  let bladeTrapCount = 0;
+  let crusherTrapCount = 0;
+  let teleporterCellCount = 0;
+  let checkpointCount = 0;
+  // let mirrorCount = 0; // Removed mirror counter
 
   for (let y = 0; y < maze.length; y++) {
     for (let x = 0; x < maze[y].length; x++) {
@@ -257,6 +464,12 @@ function generateRandomMaze(
       else if (cell === CELL_TYPES.PATH) pathCount++;
       else if (cell === CELL_TYPES.START) startCount++;
       else if (cell === CELL_TYPES.FINISH) finishCount++;
+      else if (cell === CELL_TYPES.SPIKE_WALL_TRAP) spikeTrapCount++;
+      else if (cell === CELL_TYPES.BLADE_TRAP) bladeTrapCount++;
+      else if (cell === CELL_TYPES.CRUSHER_TRAP) crusherTrapCount++;
+      else if (cell === CELL_TYPES.TELEPORTER) teleporterCellCount++;
+      else if (cell === CELL_TYPES.CHECKPOINT) checkpointCount++;
+      // else if (cell === CELL_TYPES.MIRROR) mirrorCount++; // Removed mirror count
     }
   }
 
@@ -268,10 +481,23 @@ function generateRandomMaze(
     "Start:",
     startCount,
     "Finish:",
-    finishCount
+    finishCount,
+    "Spike Traps:",
+    spikeTrapCount,
+    "Blade Traps:",
+    bladeTrapCount,
+    "Crusher Traps:",
+    crusherTrapCount,
+    "Teleporters:",
+    teleporterCellCount,
+    "Checkpoints:",
+    checkpointCount
+    // "Mirrors:", // Removed log
+    // mirrorCount
   );
 
-  return maze;
+  // Return the maze grid, teleporter pairs, and checkpoint locations
+  return { maze, teleporterPairs, checkpoints }; // Removed mirrors from return
 }
 
 // Carve passages using recursive backtracking
@@ -320,6 +546,76 @@ function carvePassages(x, y, maze, width, height, complexity) {
     }
   }
 }
+
+// --- BFS Helper Function ---
+// Finds a path considering only PATH, START, and FINISH cells as traversable initially.
+function findSolutionPath(maze, start, finish) {
+  const width = maze[0].length;
+  const height = maze.length;
+  const queue = new Queue();
+  const visited = new Set();
+  const parent = new Map(); // To reconstruct the path
+
+  const startKey = `${start.x},${start.y}`;
+  queue.enqueue(start);
+  visited.add(startKey);
+
+  const directions = [
+    { dx: 0, dy: 1 }, // Down
+    { dx: 1, dy: 0 }, // Right
+    { dx: 0, dy: -1 }, // Up
+    { dx: -1, dy: 0 }, // Left
+  ];
+
+  while (!queue.isEmpty()) {
+    const current = queue.dequeue();
+    const currentKey = `${current.x},${current.y}`;
+
+    // Found the finish
+    if (current.x === finish.x && current.y === finish.y) {
+      // Reconstruct path
+      const path = [];
+      let node = current;
+      let nodeKey = `${node.x},${node.y}`;
+      while (nodeKey !== startKey) {
+        path.push(node);
+        node = parent.get(nodeKey);
+        if (!node) break; // Should not happen if path exists
+        nodeKey = `${node.x},${node.y}`;
+      }
+      path.push(start); // Add start node
+      return path.reverse(); // Return path from start to finish
+    }
+
+    // Explore neighbors
+    for (const dir of directions) {
+      const nextX = current.x + dir.dx;
+      const nextY = current.y + dir.dy;
+      const nextKey = `${nextX},${nextY}`;
+
+      // Check bounds and if it's a valid path/finish cell and not visited
+      if (
+        nextX >= 0 &&
+        nextX < width &&
+        nextY >= 0 &&
+        nextY < height &&
+        // Only allow traversing initial PATH, START, or FINISH cells for pathfinding
+        (maze[nextY][nextX] === CELL_TYPES.PATH ||
+          maze[nextY][nextX] === CELL_TYPES.FINISH ||
+          maze[nextY][nextX] === CELL_TYPES.START) &&
+        !visited.has(nextKey)
+      ) {
+        visited.add(nextKey);
+        parent.set(nextKey, current); // Store parent for path reconstruction
+        queue.enqueue({ x: nextX, y: nextY });
+      }
+    }
+  }
+
+  console.warn("BFS could not find a path from start to finish.");
+  return null; // No path found
+}
+// --- End BFS Helper Function ---
 
 // Ensure there's a path from start to finish
 function ensurePathToFinish(maze, finishX, finishY) {

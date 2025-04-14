@@ -1,7 +1,8 @@
 /* src/components/UI/styles.css */
 
 /* HUD Styles */
-.hud-container {
+.ui-layer {
+  /* Renamed from hud-container in AppUI.jsx */
   position: absolute;
   top: 0;
   left: 0;
@@ -16,12 +17,22 @@
 
 .top-bar {
   display: flex;
-  justify-content: space-between;
+  justify-content: space-between; /* Keep space between left/right groups */
+  align-items: flex-start; /* Align items to the top */
   padding: 16px;
+  width: 100%; /* Ensure it spans width */
+  box-sizing: border-box; /* Include padding in width */
+}
+
+.top-left-hud {
+  display: flex;
+  flex-direction: column; /* Stack maze indicator and leaderboard */
+  gap: 8px; /* Space between maze indicator and leaderboard */
 }
 
 .maze-indicator,
 .timer {
+  /* Keep existing styles */
   background: linear-gradient(135deg, #1e3c72, #2a5298);
   padding: 12px 16px;
   border-radius: 4px;
@@ -223,4 +234,87 @@
 
 .button:hover {
   background-color: #e66a2e;
+}
+
+/* Mini Leaderboard Styles (HUD) */
+.mini-leaderboard {
+  /* Removed position: absolute */
+  background: rgba(0, 0, 0, 0.6);
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  width: 180px; /* Fixed width */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.leaderboard-title {
+  font-weight: bold;
+  margin-bottom: 6px;
+  text-align: center;
+  color: #eee;
+  border-bottom: 1px solid #555;
+  padding-bottom: 4px;
+}
+
+.leaderboard-entry {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  color: #ccc;
+}
+
+.leaderboard-entry span {
+  font-weight: bold;
+  margin-right: 8px;
+  color: #aaa;
+}
+
+.leaderboard-entry.local-player {
+  color: #ffcc00; /* Highlight local player */
+  font-weight: bold;
+}
+
+.leaderboard-separator {
+  text-align: center;
+  color: #888;
+  margin: 2px 0;
+}
+
+/* End of Race Screen Styles */
+.end-of-race-panel {
+  /* Inherits base panel styles */
+  background: linear-gradient(145deg, #f0f0f0, #ffffff);
+  color: #333;
+}
+
+.race-stats {
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background-color: #e9ecef;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem; /* Space between stat items */
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1.1rem;
+}
+
+.stat-label {
+  font-weight: 500;
+  color: #555;
+}
+
+.stat-value {
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.stat-value.time-value {
+  font-family: monospace;
+  color: #007bff; /* Blue for time */
 }

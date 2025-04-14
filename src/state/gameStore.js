@@ -34,10 +34,16 @@ const useGameStore = create((set, get) => ({
   raceFinished: false,
   raceStarted: false,
   raceStartTime: null,
+  raceResult: null, // Added: null | 'win' | 'timeout'
   playerPositions: {}, // { [playerId]: { x, y, z }, ... }
   playerRankings: [], // [{ id, time }, ...]
   totalMazes: GAME_CONFIG.TOTAL_MAZES,
   mazeData: persistedData?.mazeData || null, // { seed, width, height } from server
+  rematchCounter: 0, // Added to force scene remount on play again
+  teleporterPairs: [], // Added state for teleporter pairs [{entry: {x,y}, exit: {x,y}}, ...]
+  checkpoints: [], // Added state for checkpoint locations [{x, y}, ...]
+  lastCheckpoint: null, // Added state for the last checkpoint reached {x, y}
+  // mirrors: [], // Removed mirror state
 
   // Player state
   playerId: generateUniqueId(),
@@ -99,6 +105,14 @@ const useGameStore = create((set, get) => ({
 
       const elapsed = Date.now() - state.raceStartTime;
       set({ currentTime: elapsed });
+
+      // Check if max time exceeded
+      if (elapsed >= GAME_CONFIG.MAX_RACE_TIME_MS) {
+        console.log("GAME STORE: Max race time exceeded!");
+        clearInterval(timerId);
+        set({ timerId: null, raceFinished: true, raceResult: "timeout" }); // End the race, set result
+        // Note: setRaceFinished(true) is not called here to avoid recording a 'best time' on timeout.
+      }
     }, 100);
 
     // Store the timer ID in the state
@@ -160,6 +174,7 @@ const useGameStore = create((set, get) => ({
           },
           playerRankings: updatedRankings,
           raceFinished: true, // Set race as finished
+          raceResult: "win", // Set result to 'win' on normal finish
         };
       });
 
@@ -197,6 +212,10 @@ const useGameStore = create((set, get) => ({
       currentTime: 0,
       playerRankings: [],
       timerId: null,
+      raceResult: null, // Reset race result
+      checkpoints: [], // Reset checkpoints for the new maze
+      lastCheckpoint: null, // Reset last checkpoint
+      mirrors: [], // Reset mirrors for the new maze
     });
 
     // Persist the updated maze index to localStorage
@@ -287,6 +306,58 @@ const useGameStore = create((set, get) => ({
     });
   },
 
+  // Action for "Play Again" button
+  playAgain: () => {
+    console.log("GAME STORE: Play Again triggered");
+    // Clear any existing timer
+    if (get().timerId) {
+      clearInterval(get().timerId);
+    }
+    // Reset race state but keep the current maze index and best times
+    set({
+      raceFinished: false,
+      raceStarted: false, // Will be set true by HUD useEffect
+      raceStartTime: null,
+      currentTime: 0,
+      playerRankings: [], // Clear rankings for the new race
+      timerId: null,
+      raceResult: null, // Reset race result
+      rematchCounter: get().rematchCounter + 1, // Increment counter,
+      // Keep currentMazeIndex, bestTimes, mazeData
+    });
+    // The change in rematchCounter will be used as a key in App.jsx to remount MazeScene
+  },
+
+  // Action to set teleporter pairs
+  setTeleporterPairs: (pairs) => set({ teleporterPairs: pairs }),
+
+  // Action to set checkpoint locations
+  setCheckpoints: (points) => set({ checkpoints: points }),
+
+  // Action to update the last reached checkpoint
+  setLastCheckpoint: (checkpoint) => set({ lastCheckpoint: checkpoint }),
+
+  // Action to set mirror data - REMOVED
+  // setMirrors: (mirrorData) => set({ mirrors: mirrorData }),
+
+  // Action to apply respawn penalty
+  applyRespawnPenalty: () => {
+    set((state) => {
+      if (state.raceStarted && !state.raceFinished) {
+        // Add penalty to the race start time, effectively increasing current time
+        const newStartTime =
+          state.raceStartTime - GAME_CONFIG.RESPAWN_PENALTY_MS;
+        // Calculate the new current time based on the adjusted start time
+        const newCurrentTime = Date.now() - newStartTime;
+        console.log(
+          `Applying ${GAME_CONFIG.RESPAWN_PENALTY_MS}ms penalty. New current time: ${newCurrentTime}`
+        );
+        return { raceStartTime: newStartTime, currentTime: newCurrentTime };
+      }
+      return {}; // No change if race not started or already finished
+    });
+  },
+
   // Reset the game
   resetGame: () => {
     // Clear persisted maze data
@@ -305,6 +376,11 @@ const useGameStore = create((set, get) => ({
       currentTime: 0,
       playerRankings: [],
       mazeData: null,
+      raceResult: null, // Reset race result
+      teleporterPairs: [], // Reset teleporters on full game reset
+      checkpoints: [], // Reset checkpoints on full game reset
+      lastCheckpoint: null, // Reset last checkpoint
+      // mirrors: [], // Removed mirror reset
     });
   },
 }));

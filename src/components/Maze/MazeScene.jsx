@@ -29,6 +29,16 @@ export default function MazeScene() {
     currentMazeIndex,
     mazeData
   );
+
+  // Set halfWidth/halfHeight on scene userData for Player component access
+  useEffect(() => {
+    if (scene && mazeSize) {
+      scene.userData.halfWidth = mazeSize.width / 2;
+      scene.userData.halfHeight = mazeSize.height / 2;
+      console.log("Set scene userData:", scene.userData);
+    }
+  }, [scene, mazeSize]);
+
   const {
     playerStartPosition,
     finishPosition,

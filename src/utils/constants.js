@@ -9,6 +9,8 @@ export const GAME_CONFIG = {
   PLAYER_SIZE: 0.4,
   FINISH_DETECTION_THRESHOLD: 0.3,
   NEXT_MAZE_DELAY: 3000, // milliseconds
+  RESPAWN_PENALTY_MS: 3000, // 3-second penalty on respawn
+  MAX_RACE_TIME_MS: 300000, // 5 minutes max race time
 };
 
 // Cell types for maze generation
@@ -17,6 +19,12 @@ export const CELL_TYPES = {
   PATH: 0,
   START: 3,
   FINISH: 2,
+  SPIKE_WALL_TRAP: 4, // Added for the moving spike wall trap
+  BLADE_TRAP: 5, // Added for the rotating blade trap
+  CRUSHER_TRAP: 6, // Added for the vertical crusher trap
+  TELEPORTER: 7, // Added for teleporter pads
+  CHECKPOINT: 8, // Added for checkpoints
+  MIRROR: 9, // Added for observation puzzle mirrors
 };
 
 // Camera modes
